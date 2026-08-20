@@ -615,6 +615,18 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
     <div id="inst-av-status" style="font-size:12px;margin-bottom:8px;display:none;"></div>
     <div style="font-size:11px;color:var(--su);">Gratis key via <strong>twelvedata.com</strong> → Sign up → API Keys</div>
     <div style="font-size:11px;color:var(--su);margin-top:4px;">Tip: VUSA op Euronext Amsterdam → <strong>VUSA:XAMS</strong> · VWCE op Xetra → <strong>VWCE:XETR</strong> · US stocks: gewoon <strong>AAPL</strong></div>
+
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--zd);">
+      <div class="inp-label">Finnhub API Key (US stocks — gratis via finnhub.io)</div>
+      <div style="position:relative;margin-bottom:4px;">
+        <input class="inp" id="inst-finnhub-key" placeholder="Bijv. abc123def456..." style="padding-right:90px;font-family:monospace;"
+          oninput="saveData('finnhub_api_key', this.value.trim())">
+        <button onclick="slaFinnhubKeyOp()" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:var(--g);color:white;border:none;border-radius:6px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer;">Opslaan</button>
+      </div>
+      <div id="inst-finnhub-status" style="font-size:12px;margin-bottom:4px;display:none;"></div>
+      <div style="font-size:11px;color:var(--su);">Gratis via <strong>finnhub.io/register</strong> — voor AAPL, ASML etc. Twelve Data key blijft voor EU ETFs (VWCE:XETR).</div>
+    </div>
+
     <button onclick="testApiKey()" style="margin-top:10px;background:var(--cr);border:1.5px solid var(--zd);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;width:100%;color:var(--tx);">🧪 Test API verbinding (met AAPL)</button>
     <div id="inst-av-test-result" style="margin-top:8px;font-size:11px;display:none;padding:8px 10px;border-radius:8px;font-family:monospace;word-break:break-all;"></div>
   </div>
@@ -4373,6 +4385,16 @@ function renderInstellingen() {
     avStatus.textContent = '✅ Key actief: ' + savedKey.substring(0, 6) + '••••••••  (Twelve Data)';
   }
 
+  const finnhubEl = document.getElementById('inst-finnhub-key');
+  if (finnhubEl && !finnhubEl.matches(':focus')) finnhubEl.value = loadData('finnhub_api_key', '');
+  const finnhubStatus = document.getElementById('inst-finnhub-status');
+  const savedFinnhub = loadData('finnhub_api_key', '');
+  if (finnhubStatus && savedFinnhub) {
+    finnhubStatus.style.display = 'block';
+    finnhubStatus.style.color = 'var(--g)';
+    finnhubStatus.innerHTML = '✅ Finnhub actief: <strong>' + savedFinnhub.substring(0,6) + '••••••••</strong>';
+  }
+
   const updateCount = parseInt(loadData('mk_update_count', 0)) || 0;
   const recepten = loadData('mk_recepten', []);
   const doelen = loadData('mk_doelen', { kcal:2000, eiwit:150, koolh:200, vet:70 });
@@ -5652,10 +5674,18 @@ async function refreshKoersen() {
       const parts    = a.ticker.split(':');
       const symbol   = parts[0];
       const exchange = parts[1] || '';
-      // Eigen Netlify Edge Function — geen CORS problemen
-      const url = '/api/price?symbol=' + encodeURIComponent(symbol) +
-        (exchange ? '&exchange=' + encodeURIComponent(exchange) : '') +
-        '&apikey=' + apiKey;
+      const finnhubKey = loadData('finnhub_api_key', '');
+
+      // US stocks (geen exchange) → Finnhub; EU ETFs (met exchange) → Twelve Data via Edge Function
+      let url;
+      if (!exchange && finnhubKey) {
+        url = '/api/price?symbol=' + encodeURIComponent(symbol) + '&finnhub=' + finnhubKey;
+      } else {
+        url = '/api/price?symbol=' + encodeURIComponent(symbol) +
+          (exchange ? '&exchange=' + encodeURIComponent(exchange) : '') +
+          '&apikey=' + apiKey;
+      }
+
       const resp = await fetch(url);
       const data = await resp.json();
       const prijs = parseFloat(data?.price);
@@ -5714,11 +5744,10 @@ async function testApiKey() {
   el.style.display = 'block'; el.style.background = 'var(--cr)';
   el.textContent = '⏳ Testen met AAPL...';
   try {
-    const tdUrl = 'https://api.twelvedata.com/price?symbol=AAPL&apikey=' + key;
-    const url = 'https://api.allorigins.win/get?url=' + encodeURIComponent(tdUrl);
+    const finnhubKey = loadData('finnhub_api_key', '');
+    const url = finnhubKey ? '/api/price?symbol=AAPL&finnhub=' + finnhubKey : '/api/price?symbol=AAPL&apikey=' + key;
     const resp = await fetch(url);
-    const wrapper = await resp.json();
-    const data = typeof wrapper.contents === 'string' ? JSON.parse(wrapper.contents) : wrapper;
+    const data = await resp.json();
     if (data?.price) {
       el.style.background = '#EDF7E4';
       el.textContent = '✅ Werkt! AAPL prijs: $' + data.price + ' — je key is geldig.';
@@ -5731,6 +5760,18 @@ async function testApiKey() {
     el.textContent = '❌ Netwerk fout: ' + e.message + ' — controleer of je internet hebt.';
   }
 }
+
+function slaFinnhubKeyOp() {
+  const key = document.getElementById('inst-finnhub-key').value.trim();
+  saveData('finnhub_api_key', key);
+  const status = document.getElementById('inst-finnhub-status');
+  if (status) {
+    status.style.display = 'block';
+    status.style.color = key ? 'var(--g)' : 'var(--rd)';
+    status.innerHTML = key ? '✅ Finnhub key opgeslagen: <strong>' + key.substring(0,6) + '••••••••</strong>' : '⚠️ Geen key ingevuld';
+  }
+}
+
 
 function slaApiKeyOp() {
   const key = document.getElementById('inst-av-key').value.trim();
