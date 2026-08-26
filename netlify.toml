@@ -2,6 +2,7 @@
 path = "/api/price"
 function = "price"
 
-[[edge_functions]]
-path = "/api/prijs-check"
-function = "prijs-check"
+[[redirects]]
+from = "/api/prijs-check"
+to = "/.netlify/functions/prijs-check"
+status = 200
