@@ -1,3 +1,7 @@
 [[edge_functions]]
 path = "/api/price"
 function = "price"
+
+[[edge_functions]]
+path = "/api/prijs-check"
+function = "prijs-check"
