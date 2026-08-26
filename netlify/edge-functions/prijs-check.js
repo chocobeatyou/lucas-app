@@ -6,6 +6,7 @@
 export default async (request, context) => {
   const url = new URL(request.url);
   const productUrl = url.searchParams.get('url') || '';
+  const debug = url.searchParams.get('debug') === '1';
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
   if (!productUrl || !/^https?:\/\//i.test(productUrl)) {
@@ -22,17 +23,30 @@ export default async (request, context) => {
       signal: AbortSignal.timeout(9000),
     });
 
+    const html = await resp.text();
+
     if (!resp.ok) {
-      return new Response(JSON.stringify({ gevonden: false, error: 'http ' + resp.status }), { headers });
+      const out = { gevonden: false, error: 'http ' + resp.status, lengte: html.length };
+      if (debug) out.snippet = html.slice(0, 800);
+      return new Response(JSON.stringify(out), { headers });
     }
 
-    const html = await resp.text();
     const prijs = extractPrice(html);
 
     if (prijs) {
       return new Response(JSON.stringify({ gevonden: true, prijs }), { headers });
     }
-    return new Response(JSON.stringify({ gevonden: false, error: 'prijs niet gevonden op pagina' }), { headers });
+    const out = {
+      gevonden: false,
+      error: 'prijs niet gevonden op pagina',
+      lengte: html.length,
+      heeftJsonLd: /application\/ld\+json/i.test(html),
+      heeftNextData: /__NEXT_DATA__/i.test(html),
+      heeftEuroTeken: /€/.test(html),
+      leekOpCaptchaOfBlokkade: /captcha|access denied|blocked|are you a robot|niet toegankelijk/i.test(html),
+    };
+    if (debug) out.snippet = html.slice(0, 1500);
+    return new Response(JSON.stringify(out), { headers });
   } catch (e) {
     return new Response(JSON.stringify({ gevonden: false, error: e.message || 'fetch mislukt' }), { headers });
   }
